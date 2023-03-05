@@ -1,3 +1,4 @@
+// 记录依赖，触发依赖
 const effect = (fn, options = {}) => {
     const effect = createReactiveEffect(fn, options);
     if (!options.lazy) {
@@ -45,26 +46,50 @@ const track = (target, type, key) => {
         depsMap.set(key, dep);
     }
     if (!dep.has(activeEffect)) {
+        // 数据记录其 effect 有哪些
         dep.add(activeEffect)
+        // 让 effect 记录数据依赖
         activeEffect.deps.push(dep);
     }
 };
 
-function run(effects) {
-    effects && effects.forEach((effect) => effect());
+function run(effect) {
+    if (effect.options.reset) {
+        effect.options.reset();
+    } else {
+        effect();
+    }
 }
+
 // eslint-disable-next-line
 const trigger = (target, type, key, value, oldValue) => {
     const depsMap = targetMap.get(target);
     if (!depsMap) {
         return;
     }
-    if (type === 'set') {
-        if (Array.isArray(target)) {
-            return run(depsMap.get('length'))
+    const effectRunners = new Set();
+    const computedRunners = new Set();
+    const add = (effects) => {
+        effects.forEach(effect => {
+            if (effect.options.computed) {
+                computedRunners.add(effect);
+            } else {
+                effectRunners.add(effect);
+            }
+        });
+    };
+    if (key !== null) {
+        add(depsMap.get(key));
+        if (type === 'set') {
+            if (Array.isArray(target)) {
+                add(depsMap.get('length'))
+            }
         }
     }
-    run(depsMap.get(key));
+ 
+    // 先处理 dirty，再执行 effect
+    computedRunners.forEach(run);
+    effectRunners.forEach(run);
 };
 
 export { effect, track, trigger };
